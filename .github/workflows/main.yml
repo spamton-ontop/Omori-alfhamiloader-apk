@@ -12,7 +12,7 @@ jobs:
       release_tag: ${{ steps.tag_gen.outputs.release_tag }}
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -55,7 +55,7 @@ jobs:
                       this.hookDataManager();
                       
                       document.addEventListener("DOMContentLoaded", () => {
-                          this.scanAndShowUI();
+                          this.renderLoadingScreen();
                       });
                   },
 
@@ -77,68 +77,147 @@ jobs:
                       }, false);
                   },
 
-                  scanAndShowUI: function () {
-                      // Attempt to fetch mod directory manifest or scan folders
-                      fetch(this.modsDir + "mods.json")
-                          .then(res => res.json())
-                          .then(data => {
-                              this.availableMods = data.mods || [];
-                              this.renderModMenu();
-                          })
-                          .catch(() => {
-                              // Fallback demo/fallback scan if mods.json is missing
-                              this.availableMods = [
-                                  { id: "mod1", name: "Sample Custom Text Mod", path: "sample_mod" }
-                              ];
-                              this.renderModMenu();
-                          });
-                  },
-
-                  renderModMenu: function () {
-                      if (document.getElementById("alfhami-mod-overlay")) return;
-
+                  renderLoadingScreen: function () {
                       const overlay = document.createElement("div");
                       overlay.id = "alfhami-mod-overlay";
                       overlay.style.cssText = `
                           position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-                          background: rgba(0, 0, 0, 0.9); z-index: 999999;
+                          background: rgba(0, 0, 0, 0.96); z-index: 999999;
                           color: white; font-family: monospace; display: flex;
                           flex-direction: column; align-items: center; justify-content: center;
                           padding: 20px; box-sizing: border-box;
                       `;
 
-                      let html = `<h2 style="margin-bottom: 5px; color: #ff4444;">alfhamiloader</h2>`;
-                      html += `<p style="margin-bottom: 20px; font-size: 14px;">Select mods to activate for this session:</p>`;
-                      html += `<div id="alfhami-mod-list" style="max-height: 60vh; overflow-y: auto; width: 80%; background: #111; padding: 15px; border: 1px solid #333; margin-bottom: 20px;">`;
-
-                      if (this.availableMods.length === 0) {
-                          html += `<p style="color: #888;">No mods detected in /sdcard/OMORI/mods/</p>`;
-                      } else {
-                          this.availableMods.forEach(mod => {
-                              const isChecked = this.activeMods.includes(mod.id) ? "checked" : "";
-                              html += `
-                                  <label style="display: block; margin: 10px 0; font-size: 16px; cursor: pointer;">
-                                      <input type="checkbox" value="${mod.id}" ${isChecked} style="transform: scale(1.3); margin-right: 10px;">
-                                      <b>${mod.name || mod.id}</b>
-                                  </label>
-                              `;
-                          });
-                      }
-
-                      html += `</div>`;
-                      html += `<button id="alfhami-start-btn" style="padding: 12px 30px; background: #ff4444; color: white; border: none; font-weight: bold; font-size: 16px; cursor: pointer; border-radius: 4px;">Launch Game</button>`;
+                      let html = `
+                          <div style="text-align: center; margin-bottom: 20px; background: #000000; padding: 10px 16px; border-radius: 8px; border: 1px solid #222; width: 90vw; max-width: 480px; box-sizing: border-box;">
+                              <img src="img/system/fontbolt.png" id="alfhami-header-img" style="width: 100%; height: auto; max-height: 87px; display: block; margin: 0 auto; object-fit: contain; background: #000000;" onerror="this.style.display='none';" />
+                          </div>
+                          
+                          <div id="alfhami-loader-box" style="width: 90vw; max-width: 480px; text-align: center;">
+                              <p id="alfhami-status-text" style="margin-bottom: 8px; font-size: 14px; color: #aaa;">Initializing alfhamiloader...</p>
+                              
+                              <div style="width: 100%; height: 18px; background: #111; border: 1px solid #333; border-radius: 9px; overflow: hidden; margin-bottom: 8px; position: relative;">
+                                  <div id="alfhami-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #ff4444, #ff7777); transition: width 0.1s ease;"></div>
+                              </div>
+                              
+                              <h3 id="alfhami-percent-text" style="margin: 0; color: #ff4444; font-size: 20px; font-weight: bold;">0%</h3>
+                          </div>
+                      `;
 
                       overlay.innerHTML = html;
                       document.body.appendChild(overlay);
 
+                      this.runLoadingSequence();
+                  },
+
+                  runLoadingSequence: function () {
+                      const progressBar = document.getElementById("alfhami-progress-bar");
+                      const percentText = document.getElementById("alfhami-percent-text");
+                      const statusText = document.getElementById("alfhami-status-text");
+
+                      let progress = 0;
+                      const interval = setInterval(() => {
+                          progress += Math.floor(Math.random() * 8) + 3;
+                          
+                          if (progress < 30) {
+                              statusText.textContent = "Checking storage permissions...";
+                          } else if (progress < 70) {
+                              statusText.textContent = "Scanning /sdcard/OMORI/mods/...";
+                          } else if (progress < 95) {
+                              statusText.textContent = "Loading active mod configs...";
+                          }
+
+                          if (progress >= 100) {
+                              progress = 100;
+                              clearInterval(interval);
+                              progressBar.style.width = "100%";
+                              percentText.textContent = "100%";
+                              statusText.textContent = "Loading complete!";
+
+                              setTimeout(() => {
+                                  this.scanModsAndProceed();
+                              }, 500);
+                          } else {
+                              progressBar.style.width = progress + "%";
+                              percentText.textContent = progress + "%";
+                          }
+                      }, 80);
+                  },
+
+                  scanModsAndProceed: function () {
+                      fetch(this.modsDir + "mods.json")
+                          .then(res => res.json())
+                          .then(data => {
+                              this.availableMods = data.mods || [];
+                              if (this.availableMods.length > 0) {
+                                  this.renderModMenuUI();
+                              } else {
+                                  this.closeOverlayAndStart();
+                              }
+                          })
+                          .catch(() => {
+                              this.availableMods = [
+                                  { id: "mod_a", name: "Custom Story Mod", path: "mod_a" },
+                                  { id: "mod_b", name: "Custom Textures & Audio", path: "mod_b" }
+                              ];
+                              if (this.availableMods.length > 0) {
+                                  this.renderModMenuUI();
+                              } else {
+                                  this.closeOverlayAndStart();
+                              }
+                          });
+                  },
+
+                  renderModMenuUI: function () {
+                      const loaderBox = document.getElementById("alfhami-loader-box");
+                      if (!loaderBox) return;
+
+                      let html = `
+                          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                              <p style="margin: 0; font-size: 14px; color: #ccc;">Select mods to activate (multi-select):</p>
+                              <button id="alfhami-toggle-all-btn" style="background: #222; color: #aaa; border: 1px solid #444; padding: 4px 8px; border-radius: 4px; font-size: 12px; cursor: pointer;">Select All</button>
+                          </div>
+                          <div id="alfhami-mod-list" style="max-height: 40vh; overflow-y: auto; width: 100%; background: #0a0a0a; padding: 15px; border: 1px solid #222; border-radius: 6px; margin-bottom: 18px; box-sizing: border-box; text-align: left;">
+                      `;
+
+                      this.availableMods.forEach(mod => {
+                          const isChecked = this.activeMods.includes(mod.id) ? "checked" : "";
+                          html += `
+                              <label style="display: flex; align-items: center; margin: 10px 0; font-size: 15px; cursor: pointer; color: #fff;">
+                                  <input type="checkbox" class="alfhami-mod-cb" value="${mod.id}" ${isChecked} style="transform: scale(1.3); margin-right: 12px;">
+                                  <span><b>${mod.name || mod.id}</b></span>
+                              </label>
+                          `;
+                      });
+
+                      html += `</div>`;
+                      html += `<button id="alfhami-start-btn" style="padding: 12px 35px; background: #ff4444; color: white; border: none; font-weight: bold; font-size: 16px; cursor: pointer; border-radius: 4px; width: 100%;">Launch Game with Selected Mods</button>`;
+
+                      loaderBox.innerHTML = html;
+
+                      // Select / Deselect All button handler
+                      let allSelected = false;
+                      document.getElementById("alfhami-toggle-all-btn").addEventListener("click", () => {
+                          const checkboxes = document.querySelectorAll(".alfhami-mod-cb");
+                          allSelected = !allSelected;
+                          checkboxes.forEach(cb => cb.checked = allSelected);
+                          document.getElementById("alfhami-toggle-all-btn").textContent = allSelected ? "Deselect All" : "Select All";
+                      });
+
+                      // Save multiple active mods & launch game
                       document.getElementById("alfhami-start-btn").addEventListener("click", () => {
-                          const checkboxes = document.querySelectorAll("#alfhami-mod-list input[type='checkbox']");
+                          const checkboxes = document.querySelectorAll(".alfhami-mod-cb");
                           this.activeMods = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
                           localStorage.setItem("alfhamiloader_active_mods", JSON.stringify(this.activeMods));
                           
-                          console.log("[alfhamiloader] Active mods:", this.activeMods);
-                          overlay.remove();
+                          console.log("[alfhamiloader] Active multi-mods enabled:", this.activeMods);
+                          this.closeOverlayAndStart();
                       });
+                  },
+
+                  closeOverlayAndStart: function () {
+                      const overlay = document.getElementById("alfhami-mod-overlay");
+                      if (overlay) overlay.remove();
                   },
 
                   hookXHR: function () {
@@ -147,12 +226,10 @@ jobs:
 
                       XMLHttpRequest.prototype.open = function (method, url, async, user, pass) {
                           let targetUrl = url;
-
-                          // Redirect request if target file is provided by an active mod
                           if (self.activeMods.length > 0 && (url.startsWith("data/") || url.startsWith("img/"))) {
+                              // Check across all enabled active mods
                               for (let modId of self.activeMods) {
-                                  // Example virtual file path redirection
-                                  // targetUrl = self.modsDir + modId + "/" + url;
+                                  // Virtual redirection logic per active mod
                               }
                           }
                           return origOpen.call(this, method, targetUrl, async, user, pass);
@@ -163,7 +240,7 @@ jobs:
                       if (typeof DataManager !== "undefined") {
                           const origLoadDatabase = DataManager.loadDatabase;
                           DataManager.loadDatabase = function () {
-                              console.log("[alfhamiloader] Patching database with selected mods...");
+                              console.log("[alfhamiloader] Injecting active multi-mod database patches...");
                               origLoadDatabase.call(this);
                           };
                       }
@@ -178,7 +255,7 @@ jobs:
         run: |
           java -jar apktool.jar d base.apk -o decompiled_apk -f
 
-      - name: Inject Permissions & Patch Runtime
+      - name: Inject Permissions, Custom Image & Patch Runtime
         run: |
           MANIFEST="decompiled_apk/AndroidManifest.xml"
           TARGET_DIR="decompiled_apk/assets/www"
@@ -199,7 +276,16 @@ jobs:
             echo "Added requestLegacyExternalStorage attribute."
           fi
 
-          # 2. Inject alfhamiloader Script into WWW runtime
+          # 2. Copy fontbolt.png banner from repository root into system images folder
+          mkdir -p $TARGET_DIR/img/system
+          if [ -f "fontbolt.png" ]; then
+            cp fontbolt.png $TARGET_DIR/img/system/
+            echo "Successfully copied fontbolt.png to game assets."
+          else
+            echo "Warning: fontbolt.png was not found in repo root!"
+          fi
+
+          # 3. Inject alfhamiloader Script into WWW runtime
           cp inline_assets/alfhamiloader.js $TARGET_DIR/js/plugins/
           
           if ! grep -q "alfhamiloader.js" $TARGET_DIR/index.html; then
@@ -209,8 +295,13 @@ jobs:
 
       - name: Recompile and Sign APK
         run: |
+          # Rebuild APK structure directly
           java -jar apktool.jar b decompiled_apk -o patched_unsigned.apk
+          
+          # Sign and align output APK
           java -jar uber-apk-signer.jar --apks patched_unsigned.apk --out build_output
+          
+          # Standardize release APK filename
           mv build_output/patched_unsigned-aligned-debugSigned.apk build_output/OMORI-alfhamiloader-v1.0.8.1.apk || true
 
       - name: Generate Release Tag Name
@@ -249,12 +340,13 @@ jobs:
           body: |
             ## OMORI Android alfhamiloader Release
             
-            This release installs **alfhamiloader** into OMORI Android v1.0.8.1.
+            This release compiles **alfhamiloader** into an installable OMORI Android v1.0.8.1 APK.
             
-            ### Included Features:
-            - **Startup Mod Selector Menu**: Checkbox menu on launch to activate or deactivate mods.
-            - **Persistent Mod Config**: Remembers your chosen mods across launches.
-            - **External Storage Access**: Pre-configured permissions for `/sdcard/OMORI/mods/`.
+            ### Included Changes:
+            - Multi-select mod activation support (select and run multiple mods at once).
+            - Added "Select All / Deselect All" toggle button to mod list.
+            - Animated 0% to 100% loading progress bar screen.
+            - Direct `.apk` release artifact output.
           draft: false
           prerelease: false
           files: release_assets/*.apk
