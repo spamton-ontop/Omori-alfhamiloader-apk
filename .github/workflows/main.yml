@@ -157,8 +157,8 @@ jobs:
                           })
                           .catch(() => {
                               this.availableMods = [
-                                  { id: "mod_a", name: "Custom Story Mod", path: "mod_a" },
-                                  { id: "mod_b", name: "Custom Textures & Audio", path: "mod_b" }
+                                  { id: "sample_mod_1", name: "Sample Custom Story Mod", path: "sample_mod_1" },
+                                  { id: "sample_mod_2", name: "Sample Textures & Audio", path: "sample_mod_2" }
                               ];
                               if (this.availableMods.length > 0) {
                                   this.renderModMenuUI();
@@ -195,7 +195,6 @@ jobs:
 
                       loaderBox.innerHTML = html;
 
-                      // Select / Deselect All button handler
                       let allSelected = false;
                       document.getElementById("alfhami-toggle-all-btn").addEventListener("click", () => {
                           const checkboxes = document.querySelectorAll(".alfhami-mod-cb");
@@ -204,7 +203,6 @@ jobs:
                           document.getElementById("alfhami-toggle-all-btn").textContent = allSelected ? "Deselect All" : "Select All";
                       });
 
-                      // Save multiple active mods & launch game
                       document.getElementById("alfhami-start-btn").addEventListener("click", () => {
                           const checkboxes = document.querySelectorAll(".alfhami-mod-cb");
                           this.activeMods = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
@@ -224,16 +222,46 @@ jobs:
                       const origOpen = XMLHttpRequest.prototype.open;
                       const self = this;
 
-                      XMLHttpRequest.prototype.open = function (method, url, async, user, pass) {
+                      // 1. Intercept synchronous status and apply mod path overrides
+                      XMLHttpRequest.prototype.open = function (method, url, async = true, user, pass) {
+                          this._isAsync = async;
                           let targetUrl = url;
-                          if (self.activeMods.length > 0 && (url.startsWith("data/") || url.startsWith("img/"))) {
-                              // Check across all enabled active mods
-                              for (let modId of self.activeMods) {
-                                  // Virtual redirection logic per active mod
+
+                          if (self.activeMods.length > 0 && typeof url === "string") {
+                              if (url.startsWith("data/") || url.startsWith("img/")) {
+                                  for (let modId of self.activeMods) {
+                                      // Virtual path redirection logic
+                                  }
                               }
                           }
+
                           return origOpen.call(this, method, targetUrl, async, user, pass);
                       };
+
+                      // 2. Wrap responseType setter to prevent InvalidAccessError on sync XHR calls
+                      const descriptor = Object.getOwnPropertyDescriptor(XMLHttpRequest.prototype, 'responseType') || {
+                          get: function() { return this._responseType || ''; },
+                          set: function(val) { this._responseType = val; }
+                      };
+
+                      Object.defineProperty(XMLHttpRequest.prototype, 'responseType', {
+                          get: function () {
+                              return descriptor.get ? descriptor.get.call(this) : this._responseType;
+                          },
+                          set: function (value) {
+                              if (this._isAsync === false) {
+                                  console.warn("[alfhamiloader] Suppressed responseType assignment on synchronous request:", value);
+                                  return;
+                              }
+                              if (descriptor.set) {
+                                  descriptor.set.call(this, value);
+                              } else {
+                                  this._responseType = value;
+                              }
+                          },
+                          configurable: true,
+                          enumerable: true
+                      });
                   },
 
                   hookDataManager: function () {
@@ -343,9 +371,11 @@ jobs:
             This release compiles **alfhamiloader** into an installable OMORI Android v1.0.8.1 APK.
             
             ### Included Changes:
+            - Fixed `InvalidAccessError` crash on synchronous database XHR requests.
             - Multi-select mod activation support (select and run multiple mods at once).
             - Added "Select All / Deselect All" toggle button to mod list.
             - Animated 0% to 100% loading progress bar screen.
+            - Embedded `fontbolt.png` header image into the loader screen.
             - Direct `.apk` release artifact output.
           draft: false
           prerelease: false
